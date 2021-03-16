@@ -14,6 +14,8 @@ library(janitor)
 library(gt)
 library(flextable)
 library(gtsummary)
+library(rstatix)
+library(likert)
 ```
 
 ## Read in data
@@ -22,10 +24,20 @@ Start with FCP and CRP
 
 ```{r labs}
 fcp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "FCP") %>% 
-  select(group:value)
+  group_by(mrn) %>% 
+  arrange(mrn, desc(time_point)) %>% 
+  mutate(delta_fcp = value - lag(value)) %>% 
+  mutate(pct_change_fcp = 100*delta_fcp/lag(value)) %>% 
+  ungroup() %>% 
+  select(group:pct_change_fcp)
 
 crp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "CRP") %>% 
-  select(group:value)
+  group_by(mrn) %>% 
+  arrange(mrn, desc(time_point)) %>% 
+  mutate(delta_crp = value - lag(value)) %>% 
+  mutate(pct_change_crp = 100*delta_crp/lag(value)) %>% 
+  ungroup() %>% 
+  select(group:pct_change_crp)
 ```
 
 Now read in Likert values
@@ -54,7 +66,16 @@ demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_n
 ## Demographic table with gtsummary and flextable
 
 ```{r demographics}
-
+ demog %>% 
+   select(-dob, -stelara_start) %>% 
+   tbl_summary(
+    by = group, # split table by group
+    missing = "no" # don't list missing data separately
+  ) %>%
+  add_n() %>% # add column with total number of non-missing observations
+  add_p() %>% # test for a difference between groups
+  modify_header(label = "**Variable**") %>% # update the column header
+  bold_labels() 
 
 ```
 
@@ -63,14 +84,38 @@ demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_n
 You can also embed plots, for example:
 
 ```{r fcp, echo=FALSE}
+fcp %>% 
+  filter(time_point == "AFTER") %>% 
+  rstatix::t_test(value ~ group)
 
+fcp %>% 
+  filter(time_point == "BEFORE") %>% 
+  rstatix::t_test(value ~ group)
+
+fcp %>% 
+  filter(time_point == "AFTER") %>% 
+  rstatix::t_test(pct_change_fcp ~ group, detailed = TRUE)
 ```
 
 ```{r crp, echo=FALSE}
+crp %>% 
+  filter(time_point == "AFTER") %>% 
+  rstatix::t_test(value ~ group)
 
+crp %>% 
+  filter(time_point == "BEFORE") %>% 
+  rstatix::t_test(value ~ group)
+
+crp %>% 
+  filter(time_point == "AFTER") %>% 
+  rstatix::t_test(pct_change_crp ~ group, detailed = TRUE)
 ```
 
 ## Testing Likert for Path, Endo, Imaging
+
+Use likert package examples
+
+<https://github.com/jbryer/likert>
 
 ```{r path, echo=FALSE}
 
