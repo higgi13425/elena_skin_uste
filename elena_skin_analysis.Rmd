@@ -1,0 +1,85 @@
+---
+title: "elena_skin_analysis"
+author: "Peter Higgins"
+date: "3/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(here)
+library(janitor)
+library(gt)
+library(flextable)
+library(gtsummary)
+```
+
+## Read in data
+
+Start with FCP and CRP
+
+```{r labs}
+fcp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "FCP") %>% 
+  select(group:value)
+
+crp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "CRP") %>% 
+  select(group:value)
+```
+
+Now read in Likert values
+
+```{r likert}
+path_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "path") %>% 
+  select(group:path_likert)
+
+endo_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "endo") %>% 
+  select(group:endo_likert)
+
+imaging_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "imaging") %>% 
+  select(group:imaging_likert)
+```
+
+Now read in demographics
+
+```{r demog}
+demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_names() %>% 
+  select(group_type:stelara_start) %>% 
+  mutate(dob = as.Date(dob),
+         stelara_start = as.Date(stelara_start)) %>% 
+  rename(group = group_type)
+```
+
+## Demographic table with gtsummary and flextable
+
+```{r demographics}
+
+
+```
+
+## Testing FCP and CRP
+
+You can also embed plots, for example:
+
+```{r fcp, echo=FALSE}
+
+```
+
+```{r crp, echo=FALSE}
+
+```
+
+## Testing Likert for Path, Endo, Imaging
+
+```{r path, echo=FALSE}
+
+```
+
+```{r endo, echo=FALSE}
+
+```
+
+```{r imaging, echo=FALSE}
+
+```
