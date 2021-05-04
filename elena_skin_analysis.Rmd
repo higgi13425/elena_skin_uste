@@ -2,7 +2,9 @@
 title: "elena_skin_analysis"
 author: "Peter Higgins"
 date: "3/15/2021"
-output: html_document
+output:
+  word_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -15,9 +17,11 @@ library(gt)
 library(flextable)
 library(gtsummary)
 library(rstatix)
+library(likert)
 library(RColorBrewer)
 library(reshape2)
 library(ggthemes)
+library(here)
 ```
 
 ## Read in data
@@ -26,6 +30,8 @@ Start with FCP and CRP
 
 ```{r labs}
 fcp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "FCP") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
   group_by(mrn) %>% 
   arrange(mrn, desc(time_point)) %>% 
   mutate(delta_fcp = value - lag(value)) %>% 
@@ -34,6 +40,8 @@ fcp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "FCP"
   select(group:pct_change_fcp)
 
 crp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "CRP") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
   group_by(mrn) %>% 
   arrange(mrn, desc(time_point)) %>% 
   mutate(delta_crp = value - lag(value)) %>% 
@@ -46,12 +54,18 @@ Now read in Likert values
 
 ```{r likert}
 path_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "path") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
   select(group:path_likert)
 
 endo_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "endo") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
   select(group:endo_likert)
 
 imaging_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "imaging") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
   select(group:imaging_likert)
 ```
 
@@ -62,7 +76,9 @@ demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_n
   select(group_type:stelara_start) %>% 
   mutate(dob = as.Date(dob),
          stelara_start = as.Date(stelara_start)) %>% 
-  rename(group = group_type)
+  rename(group = group_type) %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) 
 ```
 
 ## Demographic table with gtsummary and flextable
@@ -77,7 +93,7 @@ demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_n
    mutate(race = case_when(race == "A" ~ "Asian or Pacific Islander",
                           race == "AA" ~ "African-American",
                           race == "C" ~ "Caucasian",
-                          race == "HL" ~ "More than One Race",
+                          race == "HL" ~ "Caucasian",
                           race == "O" ~ "Other",
                           race == "U" ~ "Unknown")) %>% 
    tbl_summary(
@@ -87,7 +103,6 @@ demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_n
               tobacco ~ "Tobacco Use",
               age_at_start ~ "Age"),
     type = c(sex, race, tobacco) ~ "categorical") %>%
-  add_n() %>% # add column with total number of non-missing observations
   add_p() %>% # test for a difference between groups
   modify_header(label = "**Variable**") %>% # update the column header
   bold_labels() %>% 
@@ -96,13 +111,69 @@ demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_n
 ```
 
 ## Testing FCP and CRP
+Using pre, post, and paired t-tests
 
-You can also embed plots, for example:
+# decrease in FCP in skin 
 
-```{r fcp, echo=FALSE}
+```{r}
+options(digits = 2)
+
+# before, skin
+fcp %>% 
+  filter(group == "CD-ASD") %>% 
+  filter(time_point == "BEFORE") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# after, skin
+fcp %>% 
+  filter(group == "CD-ASD") %>% 
+  filter(time_point == "AFTER") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+```
+
+# t-test pre-post, skin
+```{r}
+fcp %>% 
+  filter(group == "CD-ASD") %>% 
+  rstatix::t_test(value ~ time_point, detailed = TRUE) %>% 
+  print(width = Inf)
+
+# before, no skin
+fcp %>% 
+  filter(group == "CD-None") %>% 
+  filter(time_point == "BEFORE") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# after, no skin
+fcp %>% 
+  filter(group == "CD-None") %>% 
+  filter(time_point == "AFTER") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# t-test pre-post, no skin
+fcp %>% 
+  filter(group == "CD-None") %>% 
+  rstatix::t_test(value ~ time_point, detailed = TRUE) %>% 
+  print(width = Inf)
+
+# pct change in fcp
+
+fcp %>% 
+  filter(!is.na(pct_change_fcp)) %>% 
+  rstatix::t_test(pct_change_fcp ~ group, detailed = TRUE) %>% 
+  print(width = Inf)
+```
+
+Using timepoint t-tests
+```{r}
 fcp %>% 
   filter(time_point == "AFTER") %>% 
-  rstatix::t_test(value ~ group)
+  rstatix::t_test(value ~ group, detailed = TRUE) %>% 
+  select(group1:group2, p)
 
 fcp %>% 
   filter(time_point == "BEFORE") %>% 
@@ -118,12 +189,69 @@ fcp_t %>%
   flextable()
 ```
 
-The FCP in the NOSKIN group decreased by `r round(fcp_t$estimate1,2)` percent, while the calprotectin in the SKIN group decreased by `r round(fcp_t$estimate2,2)` percent, with a p value of `r round(fcp_t$p,3)` for this comparison.
+Now for CRP
+```{r}
 
-```{r crp, echo=FALSE}
+# before, skin
+crp %>% 
+  filter(group == "CD-ASD") %>% 
+  filter(time_point == "BEFORE") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# after, skin
+crp %>% 
+  filter(group == "CD-ASD") %>% 
+  filter(time_point == "AFTER") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# ttest pre post, SKIN
+crp %>% 
+  filter(group == "CD-ASD") %>% 
+  rstatix::t_test(value ~ time_point, detailed = TRUE) %>% 
+  print(width = Inf)
+```
+
+for noskin
+```{r}
+# before, no skin
+crp %>% 
+  filter(group == "CD-None") %>% 
+  filter(time_point == "BEFORE") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# after, no skin
+crp %>% 
+  filter(group == "CD-None") %>% 
+  filter(time_point == "AFTER") %>% 
+  summarize(mean = sprintf("%0.2f",mean(value)),
+            sd = sprintf("%0.2f",sd(value))) 
+
+# t-test pre-post, no skin
+crp %>% 
+  filter(group == "CD-None") %>% 
+  rstatix::t_test(value ~ time_point, detailed = TRUE) %>% 
+  print(width = Inf)
+```
+
+pct change by group, crp
+```{r}
+# pct change in crp
+
+crp %>% 
+  filter(!is.na(pct_change_crp)) %>% 
+  rstatix::t_test(pct_change_crp ~ group, detailed = TRUE) %>% 
+  print(width = Inf)
+```
+
+CRP  timepoint t-tests
+```{r}
 crp %>% 
   filter(time_point == "AFTER") %>% 
-  rstatix::t_test(value ~ group)
+  rstatix::t_test(value ~ group, detailed = TRUE) %>% 
+  select(group1:group2, p)
 
 crp %>% 
   filter(time_point == "BEFORE") %>% 
@@ -133,50 +261,43 @@ crp %>%
   filter(time_point == "AFTER") %>% 
   rstatix::t_test(pct_change_crp ~ group, detailed = TRUE) ->
 crp_t
+crp_t
 
 crp_t %>% 
   select(estimate1:estimate2, group1:conf.high) %>% 
   flextable()
 ```
 
-The CRP in the NOSKIN group decreased by `r round(crp_t$estimate1,2)` percent, while the calprotectin in the SKIN group decreased by `r round(crp_t$estimate2,2)` percent, with a p value of `r round(crp_t$p,3)` for this comparison.
-
 ## Testing Likert for Path, Endo, Imaging
-
-```{r likert_results}
+```{r}
 path_likert %>% 
   rstatix::t_test(path_likert ~ group, detailed = TRUE)->
 path_likert_result
 path_likert_result %>% 
   select(estimate1:estimate2, group1:conf.high) %>% 
-  flextable()
+  print(width = Inf)
 
 endo_likert %>% 
-  rstatix::t_test(endo_likert ~ group, detailed = TRUE) %>% 
+  rstatix::t_test(endo_likert ~ group, detailed = TRUE) %>%
   select(estimate1:estimate2, group1:conf.high) %>% 
-  flextable()
+  print(width = Inf)
 
 imaging_likert %>% 
   rstatix::t_test(imaging_likert ~ group, detailed = TRUE) %>% 
   select(estimate1:estimate2, group1:conf.high) %>% 
-  flextable()
+  print(width = Inf)
 ```
 
-The pathology likert scale results demonstrated a difference of `r  path_likert_result$estimate` points higher for the SKIN group, with a confidence interval from `r  -path_likert_result$conf.low` to `r  -path_likert_result$conf.high`
-
 ## Plotting Likert Results
-
 Use likert package examples
 
-<https://github.com/jbryer/likert>
+https://github.com/jbryer/likert
 
-and example for ggplot here <https://jtr13.github.io/cc19/likert.html>
+and example for ggplot here https://jtr13.github.io/cc19/likert.html
 
-better explained here
-http://rnotr.com/likert/ggplot/barometer/likert-plots/
+better explained here http://rnotr.com/likert/ggplot/barometer/likert-plots/
 
-and generally about likert plots here
-http://daydreamingnumbers.com/blog/4-ways-to-visualize-likert-scales/ 
+and generally about likert plots here http://daydreamingnumbers.com/blog/4-ways-to-visualize-likert-scales/
 
 ```{r path, echo=FALSE}
 path_likert %>% 
@@ -193,13 +314,10 @@ path_likert %>%
   pivot_wider(names_from = "label", values_from = "n") %>% 
   relocate(group, "Completely Better", "Slightly Better", group) %>%     replace_na(list(`Significantly Worse`=0)) ->
 likert_path
-
 d <- likert_path
 d[,2:6] <- d[,2:6]/rowSums(d[,2:6])
-
-mytitle <- "Pathology Likert Ratings"
+mytitle <- ""
 mylevels <- c("Completely Better", "Slightly Better", "No Change", "Slightly Worse",  "Significantly Worse")
-
 # Generate mid value of neutral category
 numlevels <- length(d[1,])-1
 numcenter <- ceiling(numlevels/2) + 1
@@ -207,14 +325,12 @@ d$midvalues <- d[,numcenter]/2
 d_2<-cbind(d[,1],d[,2:ceiling(numlevels/2)], d$midvalues, d$midvalues,d[,numcenter:numlevels+1])
 colnames(d_2)<-c("group",mylevels[1:floor(numlevels/2)],"Midlow",
                  "Midhigh",mylevels[numcenter:numlevels])
-
 # Split into six categories (splitting neutral)
 numlevels<-length(mylevels)+1
 point1<-2
 point2<-((numlevels)/2)+1
 point3<-point2+1
 point4<-numlevels+1
-
 # Assign color to each category
 numlevels<-length(d[1,])-1
 temp.rows<-length(d_2[,1])
@@ -223,25 +339,20 @@ pal[ceiling(numlevels/2)]<-"#DFDFDF"
 legend.pal<-rev(pal)
 pal<-c(pal[1:(ceiling(numlevels/2)-1)], pal[ceiling(numlevels/2)], 
        pal[ceiling(numlevels/2)], pal[(ceiling(numlevels/2)+1):(numlevels-1)])
-
 # Generate new data frame including all information
 d_3<-melt(d_2,id="group")
 d_3$col<-rep(pal,each=temp.rows)
 d_3$value<-d_3$value*100
 d_3$group<-str_wrap(d_3$group, width = 40)
 d_3$group<-factor(d_3$group, levels = d_2$group[order(-(d_2[,5]+d_2[,6]+d_2[,7]))])
-
-
 d_3$col <- c("#0571B0", "#0571B0",
             "#92C5DE", "#92C5DE",
             "#DFDFDF", "#DFDFDF",
             "#DFDFDF", "#DFDFDF",
             "#F4A582", "#F4A582",
             "#CA0020", "#CA0020")
-
 highs<-na.omit(d_3[(length(d_3[,1])/2)+1:length(d_3[,1]),])
 lows<-na.omit(d_3[1:(length(d_3[,1])/2),])
-
 ggplot() + geom_bar(data=highs, aes(x = group, y=value, 
                   fill=factor(col, 
                   levels = c("#CA0020", "#F4A582", "#DFDFDF"))),
@@ -258,6 +369,11 @@ ggplot() + geom_bar(data=highs, aes(x = group, y=value,
   theme(plot.title = element_text(size=14, hjust=0.5)) +
   theme(axis.text.y = element_text(hjust=0)) +
   theme(legend.position = "bottom") 
+
+ggsave(filename = here("likert_path.pdf"), device = "pdf", 
+       width = 9, height = 6, units = "in")
+ggsave(filename = here("likert_path.tiff"), device = "tiff", 
+       width = 9, height = 6, units = "in")
 ```
 
 ```{r endo, echo=FALSE}
@@ -277,13 +393,10 @@ endo_likert %>%
            "No Change") %>%    
   mutate(`Significantly Worse`=0) ->
 likert_endo
-
 d <- likert_endo
 d[,2:6] <- d[,2:6]/rowSums(d[,2:6])
-
-mytitle <- "Endoscopy Likert Ratings"
+mytitle <- ""
 mylevels <- c("Completely Better", "Slightly Better", "No Change", "Slightly Worse",  "Significantly Worse")
-
 # Generate mid value of neutral category
 numlevels <- length(d[1,])-1
 numcenter <- ceiling(numlevels/2) + 1
@@ -291,14 +404,12 @@ d$midvalues <- d[,numcenter]/2
 d_2<-cbind(d[,1],d[,2:ceiling(numlevels/2)], d$midvalues, d$midvalues,d[,numcenter:numlevels+1])
 colnames(d_2)<-c("group",mylevels[1:floor(numlevels/2)],"Midlow",
                  "Midhigh",mylevels[numcenter:numlevels])
-
 # Split into six categories (splitting neutral)
 numlevels<-length(mylevels)+1
 point1<-2
 point2<-((numlevels)/2)+1
 point3<-point2+1
 point4<-numlevels+1
-
 # Assign color to each category
 numlevels<-length(d[1,])-1
 temp.rows<-length(d_2[,1])
@@ -307,25 +418,20 @@ pal[ceiling(numlevels/2)]<-"#DFDFDF"
 legend.pal<-rev(pal)
 pal<-c(pal[1:(ceiling(numlevels/2)-1)], pal[ceiling(numlevels/2)], 
        pal[ceiling(numlevels/2)], pal[(ceiling(numlevels/2)+1):(numlevels-1)])
-
 # Generate new data frame including all information
 d_3<-melt(d_2,id="group")
 d_3$col<-rep(pal,each=temp.rows)
 d_3$value<-d_3$value*100
 d_3$group<-str_wrap(d_3$group, width = 40)
 d_3$group<-factor(d_3$group, levels = d_2$group[order(-(d_2[,5]+d_2[,6]+d_2[,7]))])
-
-
 d_3$col <- c("#0571B0", "#0571B0",
             "#92C5DE", "#92C5DE",
             "#DFDFDF", "#DFDFDF",
             "#DFDFDF", "#DFDFDF",
             "#F4A582", "#F4A582",
             "#CA0020", "#CA0020")
-
 highs<-na.omit(d_3[(length(d_3[,1])/2)+1:length(d_3[,1]),])
 lows<-na.omit(d_3[1:(length(d_3[,1])/2),])
-
 ggplot() + geom_bar(data=highs, aes(x = group, y=value, 
                   fill=factor(col, 
                   levels = c("#CA0020", "#F4A582", "#DFDFDF"))),
@@ -342,6 +448,11 @@ ggplot() + geom_bar(data=highs, aes(x = group, y=value,
   theme(plot.title = element_text(size=14, hjust=0.5)) +
   theme(axis.text.y = element_text(hjust=0)) +
   theme(legend.position = "bottom")
+
+ggsave(filename = here("likert_endo.pdf"), device = "pdf", 
+       width = 9, height = 6, units = "in")
+ggsave(filename = here("likert_endo.tiff"), device = "tiff", 
+       width = 9, height = 6, units = "in")
 ```
 
 ```{r imaging, echo=FALSE}
@@ -361,13 +472,10 @@ imaging_likert %>%
            "No Change") %>%    
   mutate(`Significantly Worse`=0) ->
 likert_imaging
-
 d <- likert_imaging
 d[,2:6] <- d[,2:6]/rowSums(d[,2:6])
-
-mytitle <- "Imaging Likert Ratings"
+mytitle <- ""
 mylevels <- c("Completely Better", "Slightly Better", "No Change", "Slightly Worse",  "Significantly Worse")
-
 # Generate mid value of neutral category
 numlevels <- length(d[1,])-1
 numcenter <- ceiling(numlevels/2) + 1
@@ -375,14 +483,12 @@ d$midvalues <- d[,numcenter]/2
 d_2<-cbind(d[,1],d[,2:ceiling(numlevels/2)], d$midvalues, d$midvalues,d[,numcenter:numlevels+1])
 colnames(d_2)<-c("group",mylevels[1:floor(numlevels/2)],"Midlow",
                  "Midhigh",mylevels[numcenter:numlevels])
-
 # Split into six categories (splitting neutral)
 numlevels<-length(mylevels)+1
 point1<-2
 point2<-((numlevels)/2)+1
 point3<-point2+1
 point4<-numlevels+1
-
 # Assign color to each category
 numlevels<-length(d[1,])-1
 temp.rows<-length(d_2[,1])
@@ -391,25 +497,20 @@ pal[ceiling(numlevels/2)]<-"#DFDFDF"
 legend.pal<-rev(pal)
 pal<-c(pal[1:(ceiling(numlevels/2)-1)], pal[ceiling(numlevels/2)], 
        pal[ceiling(numlevels/2)], pal[(ceiling(numlevels/2)+1):(numlevels-1)])
-
 # Generate new data frame including all information
 d_3<-melt(d_2,id="group")
 d_3$col<-rep(pal,each=temp.rows)
 d_3$value<-d_3$value*100
 d_3$group<-str_wrap(d_3$group, width = 40)
 d_3$group<-factor(d_3$group, levels = d_2$group[order(-(d_2[,5]+d_2[,6]+d_2[,7]))])
-
-
 d_3$col <- c("#0571B0", "#0571B0",
             "#92C5DE", "#92C5DE",
             "#DFDFDF", "#DFDFDF",
             "#DFDFDF", "#DFDFDF",
             "#F4A582", "#F4A582",
             "#CA0020", "#CA0020")
-
 highs<-na.omit(d_3[(length(d_3[,1])/2)+1:length(d_3[,1]),])
 lows<-na.omit(d_3[1:(length(d_3[,1])/2),])
-
 ggplot() + geom_bar(data=highs, aes(x = group, y=value, 
                   fill=factor(col, 
                   levels = c("#CA0020", "#F4A582", "#DFDFDF"))),
@@ -426,4 +527,9 @@ ggplot() + geom_bar(data=highs, aes(x = group, y=value,
   theme(plot.title = element_text(size=14, hjust=0.5)) +
   theme(axis.text.y = element_text(hjust=0)) +
   theme(legend.position = "bottom")
+
+ggsave(filename = here("likert_imaging.pdf"), device = "pdf", 
+       width = 9, height = 6, units = "in")
+ggsave(filename = here("likert_imaging.tiff"), device = "tiff", 
+       width = 9, height = 6, units = "in")
 ```

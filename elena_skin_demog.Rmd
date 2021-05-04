@@ -1,0 +1,110 @@
+---
+title: "elena_skin_analysis"
+author: "Peter Higgins"
+date: "3/15/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(tidyverse)
+library(here)
+library(janitor)
+library(gt)
+library(flextable)
+library(gtsummary)
+library(rstatix)
+library(RColorBrewer)
+library(reshape2)
+library(ggthemes)
+library(here)
+```
+
+## Read in data
+
+Start with FCP and CRP
+
+```{r labs}
+fcp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "FCP") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
+  group_by(mrn) %>% 
+  arrange(mrn, desc(time_point)) %>% 
+  mutate(delta_fcp = value - lag(value)) %>% 
+  mutate(pct_change_fcp = 100*delta_fcp/lag(value)) %>% 
+  ungroup() %>% 
+  select(group:pct_change_fcp)
+
+crp <- readxl::read_excel(here("Oct FCP and CRP for charts.xlsx"), sheet = "CRP") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
+  group_by(mrn) %>% 
+  arrange(mrn, desc(time_point)) %>% 
+  mutate(delta_crp = value - lag(value)) %>% 
+  mutate(pct_change_crp = 100*delta_crp/lag(value)) %>% 
+  ungroup() %>% 
+  select(group:pct_change_crp)
+```
+
+Now read in Likert values
+
+```{r likert}
+path_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "path") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
+  select(group:path_likert)
+
+endo_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "endo") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
+  select(group:endo_likert)
+
+imaging_likert <- readxl::read_excel(here("Oct Likert Numbers.xlsx"), sheet = "imaging") %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) %>% 
+  select(group:imaging_likert)
+```
+
+Now read in demographics
+
+```{r demog}
+demog <- readxl::read_excel(here("Oct demographics organized.xlsx")) %>% clean_names() %>% 
+  select(group_type:stelara_start) %>% 
+  mutate(dob = as.Date(dob),
+         stelara_start = as.Date(stelara_start)) %>% 
+  rename(group = group_type) %>% 
+  mutate(group = case_when(group == "NOSKIN" ~ "CD-None",
+                           group == "SKIN" ~ "CD-ASD")) 
+```
+
+## Demographic table with gtsummary and flextable
+
+```{r demographics}
+ demog %>% 
+   select(-dob, -stelara_start) %>% 
+   mutate(sex = case_when(sex == "F" ~ "Female",
+                          sex =="M" ~ "Male")) %>% 
+   mutate(tobacco = case_when(tobacco == "Y" ~ "Yes",
+                          tobacco == "N" ~ "No")) %>% 
+   mutate(race = case_when(race == "A" ~ "Asian or Pacific Islander",
+                          race == "AA" ~ "African-American",
+                          race == "C" ~ "Caucasian",
+                          race == "HL" ~ "Caucasian",
+                          race == "O" ~ "Other",
+                          race == "U" ~ "Unknown")) %>% 
+   tbl_summary(
+    by = group, # split table by group
+    missing = "no", # don't list missing data separately
+    label = c(sex ~ "Sex", race ~ "Race",
+              tobacco ~ "Tobacco Use",
+              age_at_start ~ "Age"),
+    type = c(sex, race, tobacco) ~ "categorical") %>%
+  add_p() %>% # test for a difference between groups
+  modify_header(label = "**Variable**") %>% # update the column header
+  bold_labels() %>% 
+   as_flex_table()
+
+```
